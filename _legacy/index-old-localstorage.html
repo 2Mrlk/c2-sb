@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de Gastos — Livro-Caixa</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#161c26;
+    --bg-soft:#1c2430;
+    --card:#212b39;
+    --card-hi:#26313f;
+    --line:#3a4658;
+    --paper:#efe6d3;
+    --paper-dim:#9aa3b0;
+    --gold:#c9a24b;
+    --gold-soft:#e0c37a;
+    --green:#5fa87a;
+    --green-soft:#3a4d40;
+    --red:#c1594c;
+    --red-soft:#4d3733;
+  }
+
+  body{
+    background-color:var(--bg);
+    background-image:
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.018) 0px, rgba(255,255,255,0.018) 1px, transparent 1px, transparent 34px);
+    color:var(--paper);
+    font-family:'Inter',sans-serif;
+  }
+
+  .font-display{ font-family:'Fraunces',serif; }
+  .font-mono{ font-family:'JetBrains Mono',monospace; }
+
+  /* ---- Ledger stub cards with torn/perforated edge ---- */
+  .stub{
+    position:relative;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+  }
+  .stub::before, .stub::after{
+    content:"";
+    position:absolute;
+    left:14px; right:14px;
+    height:11px;
+    background-image:radial-gradient(circle at 6px 5px, var(--bg) 5px, transparent 5.5px);
+    background-size:16px 11px;
+    background-repeat:repeat-x;
+    pointer-events:none;
+  }
+  .stub::before{ top:-6px; }
+  .stub::after{ bottom:-6px; transform:rotate(180deg); }
+
+  /* ---- Ruled paper card ---- */
+  .ledger-card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+  }
+
+  /* ---- Dotted leader row (invoice style) ---- */
+  .leader-row{ display:flex; align-items:baseline; gap:.5rem; min-width:0; }
+  .leader-row .dots{
+    flex:1 1 auto;
+    border-bottom:1.5px dotted var(--line);
+    margin-bottom:5px;
+    min-width:12px;
+  }
+
+  .stamp{
+    font-family:'Fraunces',serif;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    font-size:.62rem;
+  }
+
+  input, select{
+    background:var(--bg-soft);
+    border:1px solid var(--line);
+    color:var(--paper);
+  }
+  input::placeholder{ color:var(--paper-dim); }
+  input:focus, select:focus{
+    outline:none;
+    border-color:var(--gold);
+    box-shadow:0 0 0 3px rgba(201,162,75,0.18);
+  }
+
+  .btn-post{
+    background:var(--gold);
+    color:#1c2430;
+    font-weight:600;
+    transition:transform .12s ease, background .12s ease;
+  }
+  .btn-post:hover{ background:var(--gold-soft); transform:translateY(-1px); }
+  .btn-post:active{ transform:translateY(0); }
+
+  .type-toggle input{ display:none; }
+  .type-toggle label{
+    cursor:pointer;
+    border:1px solid var(--line);
+    transition:all .15s ease;
+  }
+  .type-toggle input:checked + label.income-label{
+    background:var(--green-soft); color:var(--green); border-color:var(--green);
+  }
+  .type-toggle input:checked + label.expense-label{
+    background:var(--red-soft); color:var(--red); border-color:var(--red);
+  }
+
+  .row-enter{ animation:rowIn .35s ease both; }
+  @keyframes rowIn{
+    from{ opacity:0; transform:translateY(-6px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+
+  .del-btn{ opacity:0; transition:opacity .15s ease; }
+  .tx-row:hover .del-btn{ opacity:1; }
+
+  .filter-pill{
+    border:1px solid var(--line);
+    color:var(--paper-dim);
+    transition:all .15s ease;
+  }
+  .filter-pill.active{
+    border-color:var(--gold);
+    color:var(--gold);
+    background:rgba(201,162,75,0.08);
+  }
+
+  .bar-track{ background:var(--bg-soft); border-radius:999px; overflow:hidden; }
+  .bar-fill{ background:linear-gradient(90deg, var(--gold), var(--gold-soft)); border-radius:999px; }
+
+  ::-webkit-scrollbar{ width:8px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:8px; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ===================== LOGIN SCREEN ===================== -->
+<div id="loginScreen" class="min-h-screen flex items-center justify-center px-5 py-10">
+  <div class="w-full max-w-md">
+
+    <div class="text-center mb-8">
+      <p class="stamp text-[color:var(--gold)] mb-2">Livro-caixa pessoal</p>
+      <h1 class="font-display text-4xl font-semibold">Controle de Gastos</h1>
+      <p class="text-[color:var(--paper-dim)] mt-2 text-sm">Entre para abrir o seu livro de contas.</p>
+    </div>
+
+    <div class="ledger-card p-2">
+      <!-- tabs -->
+      <div class="grid grid-cols-2 gap-2 p-1">
+        <button type="button" data-tab="entrar" class="auth-tab active py-2.5 rounded-lg text-sm font-medium">Entrar</button>
+        <button type="button" data-tab="criar" class="auth-tab py-2.5 rounded-lg text-sm font-medium">Criar conta</button>
+      </div>
+
+      <div class="p-6 pt-4">
+        <!-- ---- Entrar ---- -->
+        <form id="loginForm" class="auth-pane space-y-4">
+          <div>
+            <label class="text-xs text-[color:var(--paper-dim)] mb-1 block">E-mail</label>
+            <input id="loginEmail" type="email" required placeholder="voce@email.com" class="w-full rounded-lg px-3 py-2.5 text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-[color:var(--paper-dim)] mb-1 block">Senha</label>
+            <input id="loginPassword" type="password" required placeholder="••••••••" class="w-full rounded-lg px-3 py-2.5 text-sm">
+          </div>
+          <p id="loginError" class="text-xs text-[color:var(--red)] hidden"></p>
+          <button type="submit" class="btn-post w-full py-2.5 rounded-lg text-sm mt-1">Abrir o livro</button>
+          <p class="text-[11px] text-[color:var(--paper-dim)] text-center pt-1">
+            Demonstração: <span class="font-mono">demo@livro.com</span> / <span class="font-mono">123456</span>
+          </p>
+        </form>
+
+        <!-- ---- Criar conta ---- -->
+        <form id="registerForm" class="auth-pane hidden space-y-4">
+          <div>
+            <label class="text-xs text-[color:var(--paper-dim)] mb-1 block">Nome</label>
+            <input id="regName" type="text" required placeholder="Seu nome" class="w-full rounded-lg px-3 py-2.5 text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-[color:var(--paper-dim)] mb-1 block">E-mail</label>
+            <input id="regEmail" type="email" required placeholder="voce@email.com" class="w-full rounded-lg px-3 py-2.5 text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-[color:var(--paper-dim)] mb-1 block">Senha</label>
+            <input id="regPassword" type="password" required placeholder="mínimo 6 caracteres" class="w-full rounded-lg px-3 py-2.5 text-sm">
+          </div>
+          <p id="registerError" class="text-xs text-[color:var(--red)] hidden"></p>
+          <button type="submit" class="btn-post w-full py-2.5 rounded-lg text-sm mt-1">Criar minha conta</button>
+        </form>
+      </div>
+    </div>
+
+    <p class="text-center text-[11px] text-[color:var(--paper-dim)] mt-6">
+      Conta de demonstração, guardada apenas nesta sessão do navegador.
+    </p>
+  </div>
+</div>
+
+<!-- ===================== APP CONTENT ===================== -->
+<div id="appContent" class="hidden">
+<div class="max-w-6xl mx-auto px-5 md:px-8 py-10">
+
+  <!-- Header -->
+  <header class="mb-10 flex flex-col md:flex-row md:items-end md:justify-between gap-4 border-b border-[color:var(--line)] pb-6">
+    <div>
+      <p class="stamp text-[color:var(--gold)] mb-2">Livro-caixa pessoal</p>
+      <h1 class="font-display text-4xl md:text-5xl font-semibold text-[color:var(--paper)]">Controle de Gastos</h1>
+      <p id="welcomeMsg" class="text-[color:var(--paper-dim)] mt-2 text-sm md:text-base">Registre cada entrada e saída como uma linha no seu livro. O saldo se escreve sozinho.</p>
+    </div>
+    <div class="text-right flex flex-col items-end gap-3">
+      <div>
+        <p class="stamp text-[color:var(--paper-dim)]">Página aberta em</p>
+        <p id="today" class="font-mono text-sm text-[color:var(--paper)] mt-1"></p>
+      </div>
+      <button id="logoutBtn" class="text-xs px-3 py-1.5 rounded-full" style="border:1px solid var(--line); color:var(--paper-dim)">Sair ↦</button>
+    </div>
+  </header>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-7">
+
+    <!-- LEFT: summary stubs + category breakdown -->
+    <div class="lg:col-span-1 space-y-8">
+
+      <div class="space-y-6 pt-1">
+        <div class="stub px-5 pt-5 pb-6">
+          <p class="stamp text-[color:var(--green)]">Receitas</p>
+          <p id="totalIncome" class="font-mono text-3xl mt-2 text-[color:var(--green)]">R$ 0,00</p>
+        </div>
+        <div class="stub px-5 pt-5 pb-6">
+          <p class="stamp text-[color:var(--red)]">Despesas</p>
+          <p id="totalExpense" class="font-mono text-3xl mt-2 text-[color:var(--red)]">R$ 0,00</p>
+        </div>
+        <div class="stub px-5 pt-5 pb-6">
+          <p class="stamp text-[color:var(--gold)]">Saldo atual</p>
+          <p id="totalBalance" class="font-mono text-3xl mt-2 text-[color:var(--paper)]">R$ 0,00</p>
+        </div>
+      </div>
+
+      <div class="ledger-card p-5">
+        <p class="stamp text-[color:var(--paper-dim)] mb-4">Despesas por categoria</p>
+        <div id="categoryBreakdown" class="space-y-4"></div>
+        <p id="categoryEmpty" class="text-sm text-[color:var(--paper-dim)] hidden">Nenhuma despesa lançada ainda.</p>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: form + transaction list -->
+    <div class="lg:col-span-2 space-y-7">
+
+      <!-- Add form -->
+      <form id="txForm" class="ledger-card p-6">
+        <p class="stamp text-[color:var(--gold)] mb-5">Novo lançamento</p>
+
+        <div class="type-toggle flex gap-3 mb-5">
+          <input type="radio" name="type" id="typeIncome" value="receita" checked>
+          <label for="typeIncome" class="income-label px-4 py-2 rounded-full text-sm font-medium">↑ Receita</label>
+          <input type="radio" name="type" id="typeExpense" value="despesa">
+          <label for="typeExpense" class="expense-label px-4 py-2 rounded-full text-sm font-medium">↓ Despesa</label>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="md:col-span-2">
+            <label class="text-xs text-[color:var(--paper-dim)] mb-1 block">Descrição</label>
+            <input id="descInput" type="text" placeholder="Ex.: Feira do mês, Salário, Uber..." required
+              class="w-full rounded-lg px-3 py-2.5 text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-[color:var(--paper-dim)] mb-1 block">Valor (R$)</label>
+            <input id="amountInput" type="number" step="0.01" min="0.01" placeholder="0,00" required
+              class="w-full rounded-lg px-3 py-2.5 text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs text-[color:var(--paper-dim)] mb-1 block">Categoria</label>
+            <select id="categoryInput" class="w-full rounded-lg px-3 py-2.5 text-sm">
+              <option>Alimentação</option>
+              <option>Transporte</option>
+              <option>Moradia</option>
+              <option>Lazer</option>
+              <option>Saúde</option>
+              <option>Salário</option>
+              <option>Outros</option>
+              <option value="__nova__">+ Nova categoria...</option>
+            </select>
+            <input id="newCategoryInput" type="text" placeholder="Nome da nova categoria"
+              class="w-full rounded-lg px-3 py-2.5 text-sm mt-2 hidden">
+          </div>
+        </div>
+
+        <button type="submit" class="btn-post w-full md:w-auto mt-5 px-6 py-2.5 rounded-lg text-sm">
+          Lançar no livro
+        </button>
+      </form>
+
+      <!-- Transactions -->
+      <div class="ledger-card p-6">
+        <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+          <p class="stamp text-[color:var(--paper-dim)]">Lançamentos</p>
+          <div class="flex gap-2 text-xs">
+            <button data-filter="todos" class="filter-pill active px-3 py-1.5 rounded-full">Todos</button>
+            <button data-filter="receita" class="filter-pill px-3 py-1.5 rounded-full">Receitas</button>
+            <button data-filter="despesa" class="filter-pill px-3 py-1.5 rounded-full">Despesas</button>
+          </div>
+        </div>
+
+        <div id="txList" class="space-y-1 max-h-[480px] overflow-y-auto pr-1"></div>
+        <p id="listEmpty" class="text-sm text-[color:var(--paper-dim)] py-6 text-center hidden">
+          Sua página está em branco. Lance a primeira entrada ou saída acima.
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <footer class="text-center text-xs text-[color:var(--paper-dim)] mt-12 pb-4">
+    Feito com Tailwind &amp; CSS · os dados vivem apenas nesta sessão
+  </footer>
+</div>
+
+<script>
+  // ===================== AUTH SYSTEM =====================
+  const DEMO_USER = { email: 'demo@livro.com', password: '123456', name: 'Usuário Demo' };
+  let currentUser = null;
+
+  // --- Auth tab switching ---
+  document.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.auth-tab').forEach(t => {
+        t.classList.remove('active');
+        t.style.background = 'transparent';
+        t.style.color = 'var(--paper-dim)';
+      });
+      tab.classList.add('active');
+      tab.style.background = 'var(--bg-soft)';
+      tab.style.color = 'var(--paper)';
+
+      const panes = document.querySelectorAll('.auth-pane');
+      panes.forEach(p => p.classList.add('hidden'));
+      if (tab.dataset.tab === 'entrar') {
+        document.getElementById('loginForm').classList.remove('hidden');
+      } else {
+        document.getElementById('registerForm').classList.remove('hidden');
+      }
+    });
+  });
+
+  // Initialize active tab style
+  document.querySelector('.auth-tab.active').style.background = 'var(--bg-soft)';
+  document.querySelector('.auth-tab.active').style.color = 'var(--paper)';
+  document.querySelector('.auth-tab:not(.active)').style.background = 'transparent';
+  document.querySelector('.auth-tab:not(.active)').style.color = 'var(--paper-dim)';
+
+  // --- Helper: get users from localStorage ---
+  function getUsers() {
+    try { return JSON.parse(localStorage.getItem('cg_users') || '[]'); } catch { return []; }
+  }
+  function saveUsers(users) { localStorage.setItem('cg_users', JSON.stringify(users)); }
+
+  function getUserTxKey(email) { return 'cg_tx_' + email.replace(/[^a-zA-Z0-9]/g, '_'); }
+
+  function loadUserTransactions(email) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(getUserTxKey(email)));
+      if (Array.isArray(saved) && saved.length > 0) {
+        return saved.map(t => ({ ...t, date: new Date(t.date) }));
+      }
+    } catch {}
+    return null;
+  }
+
+  function saveUserTransactions(email, txs) {
+    localStorage.setItem(getUserTxKey(email), JSON.stringify(txs));
+  }
+
+  // --- Register ---
+  document.getElementById('registerForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = document.getElementById('regName').value.trim();
+    const email = document.getElementById('regEmail').value.trim().toLowerCase();
+    const password = document.getElementById('regPassword').value;
+    const errEl = document.getElementById('registerError');
+
+    if (password.length < 6) {
+      errEl.textContent = 'A senha deve ter no mínimo 6 caracteres.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    const users = getUsers();
+    if (users.find(u => u.email === email) || email === DEMO_USER.email) {
+      errEl.textContent = 'Já existe uma conta com este e-mail.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    users.push({ email, password, name });
+    saveUsers(users);
+    errEl.classList.add('hidden');
+    loginAs({ email, name });
+  });
+
+  // --- Login ---
+  document.getElementById('loginForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+    const password = document.getElementById('loginPassword').value;
+    const errEl = document.getElementById('loginError');
+
+    // Check demo user
+    if (email === DEMO_USER.email && password === DEMO_USER.password) {
+      errEl.classList.add('hidden');
+      loginAs({ email: DEMO_USER.email, name: DEMO_USER.name });
+      return;
+    }
+
+    // Check registered users
+    const users = getUsers();
+    const user = users.find(u => u.email === email && u.password === password);
+    if (user) {
+      errEl.classList.add('hidden');
+      loginAs({ email: user.email, name: user.name });
+      return;
+    }
+
+    errEl.textContent = 'E-mail ou senha incorretos.';
+    errEl.classList.remove('hidden');
+  });
+
+  // --- Login action ---
+  function loginAs(user) {
+    currentUser = user;
+    localStorage.setItem('cg_session', JSON.stringify(user));
+
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('appContent').classList.remove('hidden');
+    document.getElementById('welcomeMsg').textContent = `Olá, ${user.name}! Registre cada entrada e saída como uma linha no seu livro.`;
+
+    // Load saved transactions or use defaults for demo
+    const saved = loadUserTransactions(user.email);
+    if (saved) {
+      transactions = saved;
+      nextId = transactions.length > 0 ? Math.max(...transactions.map(t => t.id)) + 1 : 1;
+    } else if (user.email === DEMO_USER.email) {
+      // Default demo data
+      transactions = [
+        { id: 1, type: 'receita', desc: 'Salário', category: 'Salário', amount: 4200, date: new Date() },
+        { id: 2, type: 'despesa', desc: 'Aluguel', category: 'Moradia', amount: 1500, date: new Date() },
+        { id: 3, type: 'despesa', desc: 'Supermercado', category: 'Alimentação', amount: 380.5, date: new Date() },
+        { id: 4, type: 'despesa', desc: 'Uber para o trabalho', category: 'Transporte', amount: 62.9, date: new Date() },
+        { id: 5, type: 'despesa', desc: 'Cinema', category: 'Lazer', amount: 45, date: new Date() },
+      ];
+      nextId = 6;
+    } else {
+      // New user, empty ledger
+      transactions = [];
+      nextId = 1;
+    }
+
+    render();
+  }
+
+  // --- Logout ---
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    if (currentUser) {
+      saveUserTransactions(currentUser.email, transactions);
+    }
+    currentUser = null;
+    localStorage.removeItem('cg_session');
+    document.getElementById('appContent').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+    // Reset forms
+    document.getElementById('loginForm').reset();
+    document.getElementById('registerForm').reset();
+    document.getElementById('loginError').classList.add('hidden');
+    document.getElementById('registerError').classList.add('hidden');
+  });
+
+  // --- Auto-login from session ---
+  (function checkSession() {
+    try {
+      const session = JSON.parse(localStorage.getItem('cg_session'));
+      if (session && session.email) {
+        loginAs(session);
+        return;
+      }
+    } catch {}
+  })();
+
+  // --- Auto-save on changes ---
+  function persistTransactions() {
+    if (currentUser) {
+      saveUserTransactions(currentUser.email, transactions);
+    }
+  }
+
+  // ===================== APP STATE =====================
+  let transactions = [];
+  let currentFilter = 'todos';
+  let nextId = 1;
+  let editingId = null;
+  const STEP = 10; // valor do incremento/decremento rápido, em R$
+
+  const fmt = (n) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  const todayEl = document.getElementById('today');
+  todayEl.textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+
+  const catColors = {
+    'Alimentação': '#c9a24b', 'Transporte': '#7ea9c1', 'Moradia': '#c1594c',
+    'Lazer': '#a678c9', 'Saúde': '#5fa87a', 'Salário': '#5fa87a', 'Outros': '#9aa3b0'
+  };
+  const palette = ['#c9a24b','#7ea9c1','#c1594c','#a678c9','#5fa87a','#d19a5a','#6bb0a0','#b56b8f'];
+
+  function colorForCategory(cat){
+    if (catColors[cat]) return catColors[cat];
+    const c = palette[Object.keys(catColors).length % palette.length];
+    catColors[cat] = c;
+    return c;
+  }
+
+  function addCategoryOption(name, select){
+    if ([...select.options].some(o => o.value === name)) return;
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    select.insertBefore(opt, select.querySelector('option[value="__nova__"]'));
+  }
+
+  // toggle "nova categoria" text field
+  const categorySelect = document.getElementById('categoryInput');
+  const newCategoryInput = document.getElementById('newCategoryInput');
+  categorySelect.addEventListener('change', () => {
+    const isNew = categorySelect.value === '__nova__';
+    newCategoryInput.classList.toggle('hidden', !isNew);
+    if (isNew) newCategoryInput.focus();
+  });
+
+  function render(){
+    const list = document.getElementById('txList');
+    const filtered = transactions
+      .filter(t => currentFilter === 'todos' ? true : t.type === currentFilter)
+      .sort((a,b) => b.id - a.id);
+
+    list.innerHTML = '';
+    document.getElementById('listEmpty').classList.toggle('hidden', filtered.length > 0);
+
+    filtered.forEach(t => {
+      const row = document.createElement('div');
+      row.className = 'tx-row row-enter py-3 border-b border-[color:var(--line)] last:border-0';
+      const sign = t.type === 'receita' ? '+' : '−';
+      const color = t.type === 'receita' ? 'var(--green)' : 'var(--red)';
+
+      if (editingId === t.id){
+        // ---- modo de edição inline ----
+        row.innerHTML = `
+          <div class="flex flex-col md:flex-row gap-2 md:items-center">
+            <input type="text" value="${escapeHtml(t.desc)}" data-edit="desc"
+              class="flex-1 rounded-lg px-3 py-2 text-sm min-w-0">
+            <input type="number" step="0.01" min="0.01" value="${t.amount}" data-edit="amount"
+              class="w-28 rounded-lg px-3 py-2 text-sm font-mono">
+            <select data-edit="category" class="rounded-lg px-3 py-2 text-sm">
+              ${Object.keys(catColors).map(c => `<option ${c===t.category?'selected':''}>${c}</option>`).join('')}
+            </select>
+            <div class="flex gap-2 shrink-0">
+              <button data-save="${t.id}" class="btn-post px-3 py-2 rounded-lg text-xs">Salvar</button>
+              <button data-cancel class="px-3 py-2 rounded-lg text-xs" style="border:1px solid var(--line); color:var(--paper-dim)">Cancelar</button>
+            </div>
+          </div>
+        `;
+        list.appendChild(row);
+        return;
+      }
+
+      row.innerHTML = `
+        <div class="flex items-center gap-3">
+          <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:${colorForCategory(t.category)}"></span>
+          <div class="leader-row flex-1 min-w-0">
+            <span class="text-sm truncate" style="color:var(--paper)">${escapeHtml(t.desc)}</span>
+            <span class="dots"></span>
+            <span class="font-mono text-sm font-medium" style="color:${color}">${sign} ${fmt(t.amount)}</span>
+          </div>
+          <span class="text-[10px] uppercase tracking-wide px-2 py-1 rounded-full shrink-0" style="color:var(--paper-dim);border:1px solid var(--line)">${t.category}</span>
+
+          <div class="flex items-center gap-1 shrink-0">
+            <button data-adjust="-1" data-id="${t.id}" title="Diminuir R$ ${STEP.toFixed(2)}"
+              class="w-6 h-6 rounded-full text-sm leading-none flex items-center justify-center hover:bg-[color:var(--bg-soft)]" style="border:1px solid var(--line); color:var(--paper-dim)">−</button>
+            <button data-adjust="1" data-id="${t.id}" title="Aumentar R$ ${STEP.toFixed(2)}"
+              class="w-6 h-6 rounded-full text-sm leading-none flex items-center justify-center hover:bg-[color:var(--bg-soft)]" style="border:1px solid var(--line); color:var(--paper-dim)">+</button>
+          </div>
+
+          <button data-edit-id="${t.id}" class="del-btn text-[color:var(--paper-dim)] hover:text-[color:var(--gold)] text-sm leading-none shrink-0" title="Editar">✎</button>
+          <button class="del-btn text-[color:var(--paper-dim)] hover:text-[color:var(--red)] text-lg leading-none shrink-0" title="Excluir" data-id="${t.id}">×</button>
+        </div>
+      `;
+      list.appendChild(row);
+    });
+
+    updateSummary();
+    updateCategoryBreakdown();
+  }
+
+  function updateSummary(){
+    const income = transactions.filter(t => t.type === 'receita').reduce((s,t)=>s+t.amount,0);
+    const expense = transactions.filter(t => t.type === 'despesa').reduce((s,t)=>s+t.amount,0);
+    document.getElementById('totalIncome').textContent = fmt(income);
+    document.getElementById('totalExpense').textContent = fmt(expense);
+    const balance = document.getElementById('totalBalance');
+    balance.textContent = fmt(income - expense);
+    balance.style.color = (income - expense) >= 0 ? 'var(--paper)' : 'var(--red)';
+  }
+
+  function updateCategoryBreakdown(){
+    const wrap = document.getElementById('categoryBreakdown');
+    const expenses = transactions.filter(t => t.type === 'despesa');
+    wrap.innerHTML = '';
+    document.getElementById('categoryEmpty').classList.toggle('hidden', expenses.length > 0);
+    if (expenses.length === 0) return;
+
+    const totals = {};
+    expenses.forEach(t => totals[t.category] = (totals[t.category] || 0) + t.amount);
+    const max = Math.max(...Object.values(totals));
+
+    Object.entries(totals).sort((a,b)=>b[1]-a[1]).forEach(([cat, val]) => {
+      const pct = Math.round((val / max) * 100);
+      const el = document.createElement('div');
+      el.innerHTML = `
+        <div class="flex justify-between text-xs mb-1.5">
+          <span style="color:var(--paper-dim)">${cat}</span>
+          <span class="font-mono" style="color:var(--paper)">${fmt(val)}</span>
+        </div>
+        <div class="bar-track h-1.5">
+          <div class="bar-fill h-full" style="width:${pct}%; background:${catColors[cat] || 'var(--gold)'}"></div>
+        </div>
+      `;
+      wrap.appendChild(el);
+    });
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  // ---------- events ----------
+  document.getElementById('txForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const desc = document.getElementById('descInput').value.trim();
+    const amount = parseFloat(document.getElementById('amountInput').value);
+    let category = document.getElementById('categoryInput').value;
+    const type = document.querySelector('input[name="type"]:checked').value;
+
+    if (category === '__nova__'){
+      const newCat = newCategoryInput.value.trim();
+      if (!newCat) { newCategoryInput.focus(); return; }
+      category = newCat;
+      colorForCategory(category);
+      addCategoryOption(category, categorySelect);
+    }
+
+    if (!desc || !amount || amount <= 0) return;
+
+    transactions.push({ id: nextId++, type, desc, category, amount, date: new Date() });
+    e.target.reset();
+    document.getElementById('typeIncome').checked = true;
+    newCategoryInput.classList.add('hidden');
+    newCategoryInput.value = '';
+    render();
+  });
+
+  document.getElementById('txList').addEventListener('click', (e) => {
+    // aumentar / diminuir valor rapidamente
+    const adjustBtn = e.target.closest('[data-adjust]');
+    if (adjustBtn){
+      const id = Number(adjustBtn.dataset.id);
+      const dir = Number(adjustBtn.dataset.adjust);
+      const t = transactions.find(tx => tx.id === id);
+      if (t){
+        t.amount = Math.max(0.01, Math.round((t.amount + dir * STEP) * 100) / 100);
+        render();
+      }
+      return;
+    }
+
+    // entrar em modo de edição
+    const editBtn = e.target.closest('[data-edit-id]');
+    if (editBtn){
+      editingId = Number(editBtn.dataset.editId);
+      render();
+      return;
+    }
+
+    // cancelar edição
+    if (e.target.closest('[data-cancel]')){
+      editingId = null;
+      render();
+      return;
+    }
+
+    // salvar edição
+    const saveBtn = e.target.closest('[data-save]');
+    if (saveBtn){
+      const id = Number(saveBtn.dataset.save);
+      const t = transactions.find(tx => tx.id === id);
+      const row = saveBtn.closest('.tx-row');
+      const desc = row.querySelector('[data-edit="desc"]').value.trim();
+      const amount = parseFloat(row.querySelector('[data-edit="amount"]').value);
+      const category = row.querySelector('[data-edit="category"]').value;
+      if (t && desc && amount > 0){
+        t.desc = desc; t.amount = amount; t.category = category;
+      }
+      editingId = null;
+      render();
+      return;
+    }
+
+    // excluir lançamento
+    const delBtn = e.target.closest('.del-btn[data-id]');
+    if (delBtn && !delBtn.hasAttribute('data-edit-id')){
+      const id = Number(delBtn.dataset.id);
+      transactions = transactions.filter(t => t.id !== id);
+      render();
+    }
+  });
+
+  document.querySelectorAll('.filter-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      render();
+    });
+  });
+
+  render();
+</script>
+</body>
+</html>
